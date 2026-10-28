@@ -29,6 +29,8 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 -->
 <resources>
 
+    <bool name="def_fm_without_headset">false</bool>
+
     <!-- enabled the headset button function to seek next station or not,default value is false -->
     <bool name="def_headset_next_enabled">false</bool>
 

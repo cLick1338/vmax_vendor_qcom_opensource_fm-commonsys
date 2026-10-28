@@ -879,19 +879,11 @@ public void onRequestPermissionsResult(int requestCode, String[] permissions,  i
    }
 
    private void enableSpeaker() {
-       //This method with toggle Speaker phone based on existing state .
-       boolean bSpeakerPhoneOn = isSpeakerEnabled();
        if(mService != null) {
            try {
-               if (bSpeakerPhoneOn) {  // as Speaker is already on turn it off.
-                   mService.enableSpeaker(false);
-                   Log.d(LOGTAG, "Speaker phone is  turned off");
-                   mSpeakerButton.setImageResource(R.drawable.btn_earphone);
-               }else { // as Speaker is off turn it on.
-                   mService.enableSpeaker(true);
-                   Log.d(LOGTAG, "Speaker phone is turned on");
-                   mSpeakerButton.setImageResource(R.drawable.btn_speaker);
-               }
+               mService.enableSpeaker(!isSpeakerEnabled());
+               mSpeakerButton.setImageResource(isSpeakerEnabled()
+                       ? R.drawable.btn_speaker : R.drawable.btn_earphone);
                invalidateOptionsMenu();
            }catch (RemoteException e) {
                e.printStackTrace();
@@ -3223,8 +3215,12 @@ public void onRequestPermissionsResult(int requestCode, String[] permissions,  i
       }
       public void onFmAudioPathStarted() {
           Log.d(LOGTAG, "mServiceCallbacks.onFmAudioPathStarted:");
-          mSpeakerButton.setClickable(true);
-          mMuteButton.setClickable(true);
+          mHandler.post(() -> {
+              mSpeakerButton.setImageResource(isSpeakerEnabled()
+                      ? R.drawable.btn_speaker : R.drawable.btn_earphone);
+              mSpeakerButton.setClickable(true);
+              mMuteButton.setClickable(true);
+          });
       }
       public void onFmAudioPathStopped() {
           Log.d(LOGTAG, "mServiceCallbacks.onFmAudioPathStopped:");

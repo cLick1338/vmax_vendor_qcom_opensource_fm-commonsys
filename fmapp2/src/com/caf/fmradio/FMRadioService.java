@@ -140,6 +140,7 @@ public class FMRadioService extends Service
    private IFMRadioServiceCallbacks mCallbacks;
    private static FmSharedPreferences mPrefs;
    private boolean mHeadsetPlugged = false;
+   private boolean mAllowWithoutHeadset = false;
    private boolean mInternalAntennaAvailable = false;
    private WakeLock mWakeLock;
    private int mServiceStartId = -1;
@@ -279,6 +280,7 @@ public class FMRadioService extends Service
       /* Register for Screen On/off broadcast notifications */
       mA2dpDeviceState = new A2dpDeviceStatus(getApplicationContext());
       registerScreenOnOffListener();
+      mAllowWithoutHeadset = getResources().getBoolean(R.bool.def_fm_without_headset);
       registerHeadsetListener();
       registerSleepExpired();
       registerRecordTimeout();
@@ -832,9 +834,6 @@ public class FMRadioService extends Service
                        Log.d(LOGTAG, "    state: " + intent.getIntExtra("state", 0));
                        Log.d(LOGTAG, "    name: " + intent.getStringExtra("name"));
                        mHeadsetPlugged = (intent.getIntExtra("state", 0) == 1);
-                       // if headset is plugged out it is required to disable
-                       // in minimal duration to avoid race conditions with
-                       // audio policy manager switch audio to speaker.
                        if (isfmOffFromApplication) {
                            Log.d(LOGTAG, "fm is off from Application, bail out");
                            return;
@@ -922,7 +921,7 @@ public class FMRadioService extends Service
                     Log.d(LOGTAG, "intent received " + intentAction);
                     if ((intentAction != null) &&
                           intentAction.equals(AudioManager.ACTION_AUDIO_BECOMING_NOISY)) {
-                        if (isFmOn())
+                        if (isFmOn() && !(mAllowWithoutHeadset && !mA2dpConnected))
                         {
                             Log.d(LOGTAG, "AUDIO_BECOMING_NOISY INTENT: mute FM Audio");
                             mute();
@@ -1025,6 +1024,19 @@ public class FMRadioService extends Service
 
     final Runnable    mHeadsetPluginHandler = new Runnable() {
         public void run() {
+            if (mAllowWithoutHeadset && !mHeadsetPlugged && isFmOn()) {
+                if (!mSpeakerPhoneOn) {
+                    enableSpeaker(true);
+                    try {
+                        if (mServiceInUse && mCallbacks != null) {
+                            mCallbacks.onFmAudioPathStarted();
+                        }
+                    } catch (RemoteException e) {
+                        e.printStackTrace();
+                    }
+                }
+                return;
+            }
             /* Update the UI based on the state change of the headset/antenna*/
             if(!isAntennaAvailable())
             {
@@ -1350,6 +1362,9 @@ public class FMRadioService extends Service
            }
        // In FM stop, the audio route is set to default audio device
        }
+       if (mAllowWithoutHeadset && !mHeadsetPlugged) {
+           mSpeakerPhoneOn = true;
+       }
        String temp = mSpeakerPhoneOn ? "Speaker" : "WiredHeadset";
        Log.d(LOGTAG, "Route audio to " + temp);
        if (mSpeakerPhoneOn) {
@@ -1361,6 +1376,10 @@ public class FMRadioService extends Service
            startApplicationLoopBack(mAudioDevice);
        } else {
            configureFMDeviceLoopback(true);
+       }
+       if (!mHeadsetPlugged) {
+           mHandler.post(() -> Toast.makeText(FMRadioService.this,
+                   R.string.no_headset_weak_reception, Toast.LENGTH_LONG).show());
        }
        try {
            if ((mServiceInUse) && (mCallbacks != null))
@@ -2549,6 +2568,10 @@ public class FMRadioService extends Service
    * @return true if fm Enable api was invoked successfully, false if the api failed.
    */
    private boolean fmOn () {
+      if (SystemProperties.getBoolean("persist.vendor.audio.hifi.enabled", false)) {
+         mHandler.post(() -> Toast.makeText(FMRadioService.this,
+                 R.string.turn_off_quad_dac, Toast.LENGTH_LONG).show());
+      }
       boolean bStatus = false;
       mWakeLock.acquire(10*1000);
 
@@ -2774,6 +2797,7 @@ public class FMRadioService extends Service
    }
 
    public void enableSpeaker(boolean speakerOn) {
+       speakerOn = speakerOn || (mAllowWithoutHeadset && !mHeadsetPlugged);
        Log.d(LOGTAG, "speakerOn: " + speakerOn);
        int mAudioDeviceType;
        String outputDevice;
@@ -3282,17 +3306,11 @@ public class FMRadioService extends Service
       return bCommandSent;
    }
 
-   /** Determines if an internal Antenna is available.
-    *  Returns the cached value initialized on FMOn.
-    *
-    * @return true if internal antenna is available or wired
-    *         headset is plugged in, false if internal antenna is
-    *         not available and wired headset is not plugged in.
-    */
+   // Allow operation without an antenna only on devices that opt in.
    public boolean isAntennaAvailable()
    {
       boolean bAvailable = false;
-      if ((mInternalAntennaAvailable) || (mHeadsetPlugged) )
+      if (mAllowWithoutHeadset || mInternalAntennaAvailable || mHeadsetPlugged)
       {
          bAvailable = true;
       }
