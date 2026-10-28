@@ -28,7 +28,7 @@
 -->
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/fmradio"
-    android:background="@drawable/bg_landscape"
+    android:background="@color/background_color"
     android:layout_width="fill_parent"
     android:layout_height="fill_parent"
     android:orientation="vertical">
